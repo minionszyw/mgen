@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "media-cli"
+dynamic = ["version"]
+description = "MiniMax 视频与 OpenAI Responses 图片生成命令行工具"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "requests>=2.32.3,<3",
+  "python-dotenv>=1.0.1,<2",
+  "Pillow>=11,<13",
+  "pillow-heif>=0.21,<2",
+]
+
+[project.optional-dependencies]
+dev = ["build>=1.2,<2", "ruff>=0.9,<1"]
+
+[project.scripts]
+media-cli = "media_cli.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["media_cli*"]
+
+[tool.setuptools]
+include-package-data = false
+
+[tool.setuptools.dynamic]
+version = {attr = "media_cli.__version__"}
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
