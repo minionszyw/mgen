@@ -1,9 +1,7 @@
 """OpenAI Responses 图片命令。"""
 
-import os
-from pathlib import Path
-
-from ..common import emit, positive, read_json, require
+from ..arguments import add_network_arguments, add_prompt_arguments, add_wait_arguments, read_prompt
+from ..common import emit, read_json, require
 from .client import ImageClient, check_terminal, decode_outputs, save_images, summary
 from .validation import validate
 
@@ -26,7 +24,7 @@ GENERATION_FIELDS = (
 )
 
 
-def build_payload(args):
+def build_payload(args, config):
     if args.request_json:
         require(
             not any(getattr(args, key) is not None for key in GENERATION_FIELDS),
@@ -34,21 +32,15 @@ def build_payload(args):
         )
         payload = read_json(args.request_json)
         require(isinstance(payload, dict), "请求文件必须是 JSON 对象")
-        payload.setdefault("model", os.getenv("IMAGE_MODEL", "gpt-6-astra"))
+        payload.setdefault("model", config.model)
         if (
             isinstance(payload.get("tools"), list)
             and len(payload["tools"]) == 1
             and isinstance(payload["tools"][0], dict)
         ):
-            payload["tools"][0].setdefault(
-                "model", os.getenv("IMAGE_TOOL_MODEL", "gpt-image-2.5-sunburst")
-            )
+            payload["tools"][0].setdefault("model", config.tool_model)
         return payload
-    require(
-        not (args.prompt is not None and args.prompt_file is not None),
-        "--prompt 与 --prompt-file 不能同时使用",
-    )
-    prompt = Path(args.prompt_file).read_text(encoding="utf-8") if args.prompt_file else args.prompt
+    prompt = read_prompt(args)
     content = [{"type": "input_text", "text": prompt}]
     for value in args.image or []:
         content.append({"type": "input_image", "image_url": value})
@@ -56,7 +48,7 @@ def build_payload(args):
         content.append({"type": "input_image", "file_id": value})
     tool = {
         "type": "image_generation",
-        "model": args.tool_model or os.getenv("IMAGE_TOOL_MODEL", "gpt-image-2.5-sunburst"),
+        "model": config.tool_model,
     }
     for key in ("action", "size", "quality", "output_format", "output_compression", "background"):
         if getattr(args, key) is not None:
@@ -70,7 +62,7 @@ def build_payload(args):
     elif args.mask_file_id is not None:
         tool["input_image_mask"] = {"file_id": args.mask_file_id}
     payload = {
-        "model": args.model or os.getenv("IMAGE_MODEL", "gpt-6-astra"),
+        "model": config.model,
         "input": [{"role": "user", "content": content}],
         "tools": [tool],
     }
@@ -90,15 +82,9 @@ def add_commands(parser):
     }
     for name, description in descriptions.items():
         cmd = commands.add_parser(name, help=description, description=description)
-        cmd.add_argument("--base-url", help="Responses API 基础地址，包含 /v1")
-        cmd.add_argument(
-            "--timeout", type=positive, default=60, help="单次网络操作超时秒数，默认 60"
-        )
+        add_network_arguments(cmd, "Responses API 基础地址，包含 /v1")
         if name in {"validate", "create", "run"}:
-            cmd.add_argument("--request-json", help="图片工作流 JSON 请求文件")
-            cmd.add_argument("--prompt", help="图片生成或修改提示词")
-            cmd.add_argument("--prompt-file", help="UTF-8 提示词文件")
-            cmd.add_argument("--model", help="顶层对话模型")
+            add_prompt_arguments(cmd)
             cmd.add_argument("--tool-model", help="图片生成工具模型")
             cmd.add_argument(
                 "--image", action="append", help="本地路径、HTTP(S) URL 或 data URI，可重复"
@@ -119,33 +105,30 @@ def add_commands(parser):
             cmd.add_argument("response_id", help="Responses API 响应 ID")
             cmd.add_argument("--wait", action="store_true", help="等待后台响应完成")
         if name in {"query", "download", "run"}:
-            cmd.add_argument("--interval", type=positive, default=5, help="轮询间隔秒数，默认 5")
-            cmd.add_argument(
-                "--max-wait", type=positive, default=1800, help="最长等待秒数，默认 1800"
-            )
+            add_wait_arguments(cmd, 5)
         if name in {"download", "run"}:
             cmd.add_argument("--output-dir", help="图片和结果清单输出目录")
             cmd.add_argument("--overwrite", action="store_true", help="允许覆盖已有结果")
     parser.set_defaults(handler=execute)
 
 
-def execute(args):
+def execute(args, config):
     payload = None
     if args.command in {"validate", "create", "run"}:
-        payload, report = validate(build_payload(args), args.timeout)
+        payload, report = validate(build_payload(args, config), args.timeout)
         if args.command == "validate":
             emit(
                 {
                     "valid": True,
-                    "model": payload["model"],
-                    "tool_model": payload["tools"][0]["model"],
+                    "model": payload.payload["model"],
+                    "tool_model": payload.payload["tools"][0]["model"],
                     **report,
                 }
             )
             return 0
     client = ImageClient(
-        args.base_url or os.getenv("IMAGE_BASE_URL", "https://api.openai.com/v1"),
-        os.getenv("IMAGE_API_KEY"),
+        config.base_url,
+        config.api_key,
         args.timeout,
     )
     try:

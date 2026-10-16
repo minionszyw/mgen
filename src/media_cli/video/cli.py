@@ -1,15 +1,14 @@
 """MiniMax 视频命令。"""
 
 import argparse
-import os
-from pathlib import Path
 
-from ..common import emit, positive, read_json, require, serialize
+from ..arguments import add_network_arguments, add_prompt_arguments, add_wait_arguments, read_prompt
+from ..common import emit, read_json, require
 from .client import VideoClient, check_terminal, download
 from .validation import validate
 
 
-def build_payload(args):
+def build_payload(args, config):
     if args.request_json:
         generation = [
             "prompt",
@@ -33,13 +32,9 @@ def build_payload(args):
         )
         payload = read_json(args.request_json)
         require(isinstance(payload, dict), "请求文件必须是 JSON 对象")
-        payload.setdefault("model", os.getenv("VIDEO_MODEL", "MiniMax-H3"))
+        payload.setdefault("model", config.model)
         return payload
-    require(
-        not (args.prompt is not None and args.prompt_file is not None),
-        "--prompt 与 --prompt-file 不能同时使用",
-    )
-    prompt = Path(args.prompt_file).read_text(encoding="utf-8") if args.prompt_file else args.prompt
+    prompt = read_prompt(args)
     items = [{"type": "text", "text": prompt}]
     for role in [
         "first_frame",
@@ -61,7 +56,7 @@ def build_payload(args):
         for value in values:
             items.append({"type": kind, kind: {"url": value}, "role": role})
     payload = {
-        "model": args.model or os.getenv("VIDEO_MODEL", "MiniMax-H3"),
+        "model": config.model,
         "content": items,
         "resolution": args.resolution if args.resolution is not None else "768P",
         "duration": args.duration if args.duration is not None else 5,
@@ -75,60 +70,71 @@ def build_payload(args):
 
 
 def add_commands(p):
-    sub = p.add_subparsers(dest="command", required=True)
-    for name in ["validate", "create", "query", "download", "run"]:
-        cmd = sub.add_parser(name)
-        cmd.add_argument("--base-url", help="API 根地址，不含 /v2 路径")
-        cmd.add_argument("--timeout", type=positive, default=60, help="单次网络操作超时秒数")
+    sub = p.add_subparsers(dest="command", required=True, title="操作")
+    descriptions = {
+        "validate": "仅构建和预检请求",
+        "create": "创建视频任务",
+        "query": "查询任务状态",
+        "download": "下载视频结果",
+        "run": "创建、等待并下载视频",
+    }
+    for name, description in descriptions.items():
+        cmd = sub.add_parser(name, help=description, description=description)
+        add_network_arguments(cmd, "API 根地址，不含 /v2 路径")
         if name in {"validate", "create", "run"}:
-            cmd.add_argument(
-                "--request-json", help="官方 JSON 请求文件；相对素材路径基于当前工作目录"
-            )
-            cmd.add_argument("--prompt")
-            cmd.add_argument("--prompt-file")
-            cmd.add_argument("--model")
-            cmd.add_argument("--resolution")
-            cmd.add_argument("--duration", type=int)
-            cmd.add_argument("--ratio")
+            add_prompt_arguments(cmd)
+            cmd.add_argument("--resolution", help="模型支持的输出分辨率")
+            cmd.add_argument("--duration", type=int, help="生成时长，整数秒")
+            cmd.add_argument("--ratio", help="输出比例，图生视频使用 adaptive")
             for role in ["first-frame", "last-frame"]:
-                cmd.add_argument("--" + role)
+                cmd.add_argument("--" + role, help="首帧/尾帧素材：路径、URL 或 data URI")
             for role in ["reference-image", "reference-video", "reference-audio"]:
-                cmd.add_argument("--" + role, action="append")
-            cmd.add_argument("--prompt-expansion-mode")
-            cmd.add_argument("--callback-url")
+                cmd.add_argument(
+                    "--" + role, action="append", help="参考素材：路径、URL 或 data URI，可重复"
+                )
             cmd.add_argument(
-                "--aigc-watermark", action=argparse.BooleanOptionalAction, default=None
+                "--prompt-expansion-mode", help="H3 Max 提示词扩写：disabled / balanced / quality"
             )
-            cmd.add_argument("--skip-media-check", action="store_true")
+            cmd.add_argument("--callback-url", help="已有回调服务的 URL")
+            cmd.add_argument(
+                "--aigc-watermark",
+                action=argparse.BooleanOptionalAction,
+                default=None,
+                help="生成视频时添加 AIGC 标识水印",
+            )
+            cmd.add_argument(
+                "--skip-media-check",
+                action="store_true",
+                help="跳过媒体属性探测，保留结构和可获得的大小检查",
+            )
         if name in {"query", "download"}:
-            cmd.add_argument("task_id")
-            cmd.add_argument("--wait", action="store_true")
+            cmd.add_argument("task_id", help="创建时返回的任务 ID")
+            cmd.add_argument("--wait", action="store_true", help="等待任务完成")
         if name in {"query", "download", "run"}:
-            cmd.add_argument("--interval", type=positive, default=10)
-            cmd.add_argument("--max-wait", type=positive, default=1800)
+            add_wait_arguments(cmd, 10)
         if name in {"download", "run"}:
             cmd.add_argument("--output", help="输出路径，默认 downloads/TASK_ID.mp4")
-            cmd.add_argument("--overwrite", action="store_true")
+            cmd.add_argument("--overwrite", action="store_true", help="允许覆盖已有文件")
     p.set_defaults(handler=execute)
 
 
-def execute(args):
+def execute(args, config):
     payload = None
     if args.command in {"validate", "create", "run"}:
-        payload = validate(build_payload(args), args.skip_media_check, args.timeout)
+        payload = validate(build_payload(args, config), args.skip_media_check, args.timeout)
     if args.command == "validate":
         emit(
             {
                 "valid": True,
-                "model": payload["model"],
-                "request_bytes": len(serialize(payload)),
+                "model": payload.payload["model"],
+                "request_bytes": payload.size_bytes,
                 "media_checked": not args.skip_media_check,
             }
         )
         return 0
     client = VideoClient(
-        args.base_url or os.getenv("VIDEO_BASE_URL", "https://api.minimax.cn"),
-        os.getenv("VIDEO_API_KEY"),
+        config.base_url,
+        config.api_key,
         args.timeout,
     )
     try:

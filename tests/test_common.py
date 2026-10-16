@@ -49,7 +49,7 @@ class CommonTests(unittest.TestCase):
         self.assertEqual(http.retry_delay(Mock(headers={"Retry-After": "-1"}), 2), 0)
 
     def test_malformed_api_error_is_still_retryable(self):
-        self.assertTrue(http.transient(500, {"error": {"code": [], "type": {}}}))
+        self.assertTrue(http.JsonClient.retryable(None, 500, {"error": {"code": [], "type": {}}}))
 
     def test_nonfinite_json(self):
         with tempfile.TemporaryDirectory() as directory:

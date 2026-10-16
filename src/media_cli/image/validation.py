@@ -9,8 +9,8 @@ from pathlib import Path
 
 from PIL import Image
 
-from ..common import CliError, http_url, log, require, safe_id, serialize
-from ..files import fetch_media
+from ..common import CliError, http_url, log, prepare_request, require, safe_id
+from ..files import fetch_media, temporary_path
 
 MB = 1_000_000
 MAX_PAYLOAD = 512 * MB
@@ -68,7 +68,7 @@ def prepare_image(item, tmp, timeout, limit=MAX_PAYLOAD, mask=False):
         return item, None
     value = item["image_url"]
     require(isinstance(value, str) and bool(value.strip()), "图片地址必须非空")
-    path = Path(tmp) / ("image-" + str(len(list(Path(tmp).iterdir()))))
+    path = temporary_path(tmp)
     remote = http_url(value)
     mime = None
     if remote:
@@ -260,12 +260,11 @@ def validate(payload, timeout=60):
                 )
             else:
                 unchecked.append("mask_format_and_size_match")
-    require(
-        len(serialize(payload)) <= MAX_PAYLOAD,
-        "请求体超过 512 MB（含 Base64），请减少素材或使用 URL/file_id",
+    request = prepare_request(
+        payload, MAX_PAYLOAD, "请求体超过 512 MB（含 Base64），请减少素材或使用 URL/file_id"
     )
-    return payload, {
+    return request, {
         "image_count": len(images),
         "unchecked": unchecked,
-        "request_bytes": len(serialize(payload)),
+        "request_bytes": request.size_bytes,
     }

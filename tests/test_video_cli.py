@@ -13,7 +13,7 @@ from unittest.mock import Mock, patch
 import requests
 from PIL import Image
 
-from media_cli import cli, common, files
+from media_cli import cli, common, config, files
 from media_cli.video import cli as vcli
 from media_cli.video import client as vc
 from media_cli.video import validation as vv
@@ -59,7 +59,7 @@ def task(status="succeeded", **kw):
 
 class ValidationTests(unittest.TestCase):
     def test_defaults_and_models(self):
-        self.assertEqual(vv.validate(payload())["ratio"], "16:9")
+        self.assertEqual(vv.validate(payload()).payload["ratio"], "16:9")
         for model, low, good, bad in [
             ("MiniMax-H3", 4, "2K", "480P"),
             ("MiniMax-H3-Max", 5, "480P", "2K"),
@@ -105,7 +105,7 @@ class ValidationTests(unittest.TestCase):
         ]
         for items in combinations:
             result = vv.validate(payload(content=base + items), skip=True)
-            self.assertEqual(result["ratio"], "adaptive")
+            self.assertEqual(result.payload["ratio"], "adaptive")
         invalid = [
             [media("image_url", "first_frame"), media("image_url", "reference_image")],
             [media("image_url", "first_frame")] * 2,
@@ -127,7 +127,9 @@ class ValidationTests(unittest.TestCase):
             )
             result = vv.validate(p)
             self.assertTrue(
-                result["content"][1]["image_url"]["url"].startswith("data:image/png;base64,")
+                result.payload["content"][1]["image_url"]["url"].startswith(
+                    "data:image/png;base64,"
+                )
             )
             Image.new("RGB", (255, 256)).save(path)
             with self.assertRaises(vv.CliError):
@@ -192,7 +194,7 @@ class ValidationTests(unittest.TestCase):
         with patch.object(vv, "prepare_media", return_value=("https://example.com/v", 8)):
             with self.assertRaises(vv.CliError):
                 vv.validate(payload(content=items))
-        with patch.object(vv, "serialize", return_value=b"x" * 65), patch.object(vv, "MB", 1):
+        with patch.object(common, "serialize", return_value=b"x" * 65), patch.object(vv, "MB", 1):
             with self.assertRaises(vv.CliError):
                 vv.validate(payload())
 
@@ -347,7 +349,7 @@ class CliTests(unittest.TestCase):
             ["video", "create", "--request-json", "request.json", "--prompt", "x"]
         )
         with self.assertRaises(common.CliError):
-            vcli.build_payload(args)
+            vcli.build_payload(args, config.DEFAULT_VIDEO.with_cli(args))
 
     def test_environment_and_json_defaults(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -375,8 +377,8 @@ class CliTests(unittest.TestCase):
                     0,
                 )
                 self.assertEqual(json.loads(out.getvalue())["model"], "MiniMax-H3")
-                self.assertEqual(os.getenv("VIDEO_API_KEY"), "dotenv-secret")
-        with patch.dict(os.environ, {"VIDEO_API_KEY": "secret"}):
+                self.assertIsNone(os.getenv("VIDEO_API_KEY"))
+        with common.output_secrets(("secret",)):
             self.assertNotIn("secret", common.redact("secret data:image/png;base64,YQ=="))
 
 

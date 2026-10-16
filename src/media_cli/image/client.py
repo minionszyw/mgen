@@ -6,7 +6,6 @@ import io
 import json
 import time
 from pathlib import Path
-from urllib.parse import quote
 
 from PIL import Image
 
@@ -26,8 +25,22 @@ def check_response(data, response_id=None):
         raise CliError("响应 ID 与查询不匹配", 3)
     if not isinstance(data.get("status"), str) or data["status"] not in STATUSES:
         raise CliError("未知或缺失的响应状态", 3)
-    if data["status"] == "completed" and not isinstance(data.get("output"), list):
-        raise CliError("完成响应缺少 output 数组", 3)
+    output = data.get("output")
+    if data["status"] == "completed" or output is not None:
+        if not isinstance(output, list) or any(not isinstance(item, dict) for item in output):
+            raise CliError("响应 output 必须是对象数组", 3)
+    for key in ("error", "incomplete_details", "usage"):
+        if data.get(key) is not None and not isinstance(data[key], dict):
+            raise CliError(f"响应 {key} 必须是对象或 null", 3)
+    for item in output or []:
+        if not isinstance(item.get("type"), str) or not item["type"]:
+            raise CliError("output 项缺少有效 type", 3)
+        if item["type"] == "image_generation_call":
+            safe_id(item.get("id"), "图片调用 ID")
+            if not isinstance(item.get("status"), str) or not item["status"]:
+                raise CliError("图片调用缺少有效 status", 3)
+            if item.get("result") is not None and not isinstance(item["result"], str):
+                raise CliError("图片调用 result 必须是字符串", 3)
     return data
 
 
@@ -39,6 +52,7 @@ def check_terminal(data):
 
 def summary(data):
     """仅返回稳定、无图片字节的结果元数据。"""
+    check_response(data)
     result = {
         key: data[key]
         for key in ("id", "status", "model", "created_at", "error", "incomplete_details", "usage")
@@ -46,8 +60,6 @@ def summary(data):
     }
     result["output"] = []
     for item in data.get("output") or []:
-        if not isinstance(item, dict):
-            continue
         result["output"].append(
             {
                 key: item[key]
@@ -72,6 +84,20 @@ class ImageClient(JsonClient):
     def __init__(self, base, key, timeout=60):
         super().__init__(base, key, timeout, service="IMAGE")
 
+    def is_api_error(self, data):
+        # Responses 任务的 error 属于生命周期结果，而非 API 错误信封。
+        return data.get("type") == "error" or (bool(data.get("error")) and "status" not in data)
+
+    def retryable(self, status, data):
+        error = data.get("error") if isinstance(data, dict) else None
+        if isinstance(error, dict) and (
+            error.get("code")
+            in ("insufficient_quota", "billing_hard_limit_reached", "moderation_blocked")
+            or error.get("type") in ("insufficient_quota", "image_generation_user_error")
+        ):
+            return False
+        return super().retryable(status, data)
+
     def create(self, payload):
         data = check_response(self.request("POST", "/responses", payload))
         log(f"响应已创建：{data['id']}；可用 image query 或 image download 恢复")
@@ -80,7 +106,7 @@ class ImageClient(JsonClient):
     def query(self, response_id, deadline=None):
         safe_id(response_id, "响应 ID")
         return check_response(
-            self.request("GET", "/responses/" + quote(response_id, safe=""), deadline=deadline),
+            self.request("GET", "/responses/" + response_id, deadline=deadline),
             response_id,
         )
 
@@ -108,8 +134,6 @@ def decode_outputs(data):
     outputs = []
     seen = set()
     for item in data["output"]:
-        if not isinstance(item, dict):
-            raise CliError("output 项必须是对象", 3)
         if item.get("type") != "image_generation_call":
             continue
         call_id = safe_id(item.get("id"), "图片调用 ID")

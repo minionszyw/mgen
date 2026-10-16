@@ -1,14 +1,14 @@
-"""共享配置、命令参数与错误处理。"""
+"""共享错误、输出脱敏、JSON 请求及基本校验。"""
 
 import argparse
 import json
 import math
-import os
 import re
 import sys
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass
 from urllib.parse import urlsplit
-
-from dotenv import load_dotenv
 
 
 class CliError(Exception):
@@ -32,13 +32,33 @@ def http_url(value):
         return False
 
 
-def redact(value):
+_secrets = ContextVar("output_secrets", default=())
+
+
+@contextmanager
+def output_secrets(secrets):
+    token = _secrets.set(tuple(secret for secret in secrets if secret))
+    try:
+        yield
+    finally:
+        _secrets.reset(token)
+
+
+def redact(value, secrets=()):
     text = str(value)
-    for name in ("VIDEO_API_KEY", "IMAGE_API_KEY"):
-        key = os.getenv(name, "")
-        if key:
-            text = text.replace(key, "[REDACTED]")
+    for key in sorted(set((*_secrets.get(), *secrets)) - {""}, key=len, reverse=True):
+        text = text.replace(key, "[REDACTED]")
     return re.sub(r'data:[^\s"\']+', "[DATA URI]", text)
+
+
+def redact_json(value):
+    if isinstance(value, str):
+        return redact(value)
+    if isinstance(value, dict):
+        return {key: redact_json(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [redact_json(item) for item in value]
+    return value
 
 
 def log(message):
@@ -46,7 +66,25 @@ def log(message):
 
 
 def emit(value):
-    print(json.dumps(value, ensure_ascii=False, indent=2))
+    print(json.dumps(redact_json(value), ensure_ascii=False, indent=2))
+
+
+@dataclass(frozen=True)
+class JsonRequest:
+    """规范化请求及已校验的 UTF-8 字节，发送时复用，避免重复编码。"""
+
+    payload: dict
+    body: bytes
+
+    @property
+    def size_bytes(self):
+        return len(self.body)
+
+
+def prepare_request(payload, limit, message):
+    body = serialize(payload)
+    require(len(body) <= limit, message)
+    return JsonRequest(payload, body)
 
 
 def serialize(payload):
@@ -63,10 +101,6 @@ def positive(value):
     if not math.isfinite(number) or number <= 0:
         raise argparse.ArgumentTypeError("必须是有限正数")
     return number
-
-
-def load_config(env_file):
-    load_dotenv(env_file, override=False)
 
 
 def read_json(path):

@@ -50,3 +50,9 @@ def atomic_write(destination, data, overwrite=False):
     finally:
         if temp is not None:
             temp.unlink(missing_ok=True)
+
+
+def temporary_path(directory):
+    """保留唯一临时路径；生命周期由调用方的临时目录管理。"""
+    with tempfile.NamedTemporaryFile(dir=directory, prefix=".media-cli-", delete=False) as out:
+        return Path(out.name)

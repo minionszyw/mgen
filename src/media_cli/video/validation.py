@@ -2,20 +2,20 @@
 
 import base64
 import binascii
+import copy
 import json
 import math
 import re
 import shutil
 import subprocess
 import tempfile
-import time
 from pathlib import Path
 
 import pillow_heif
 from PIL import Image
 
-from ..common import CliError, http_url, log, require, serialize
-from ..files import fetch_media
+from ..common import CliError, http_url, log, prepare_request, require
+from ..files import fetch_media, temporary_path
 
 pillow_heif.register_heif_opener()
 MB = 1_000_000  # 文档未明确 MB 的二进制含义，采用较保守的十进制。
@@ -67,7 +67,9 @@ def inspect_media(path, kind):
                 dimensions(*im.size)
                 fmt = im.format.lower()
                 im.verify()
-                return 0, "image/" + ("jpeg" if fmt == "jpeg" else fmt)
+            with Image.open(path) as image:
+                image.load()
+            return 0, "image/" + fmt
         except (OSError, ValueError, SyntaxError, Image.DecompressionBombError) as exc:
             raise CliError("无法读取图片") from exc
     info = probe(path)
@@ -120,8 +122,9 @@ def prepare_media(value, kind, skip, tmp, timeout):
         require(skip, "mm_file:// 无法完整预检；请提供可读素材或显式使用 --skip-media-check")
         log("mm_file 素材属性由服务端校验")
         return value, 0
+    declared_mime = None
     limit = {"image_url": 30, "video_url": 50, "audio_url": 15}[kind] * MB
-    path = Path(tmp) / str(time.monotonic_ns())
+    path = temporary_path(tmp)
     remote = http_url(value)
     if remote:
         if skip:
@@ -133,6 +136,7 @@ def prepare_media(value, kind, skip, tmp, timeout):
         )
         require(match is not None, "无效 Base64 data URI")
         mime, encoded = match.groups()
+        declared_mime = mime
         allowed = {
             "image_url": {
                 "image/jpg",
@@ -185,6 +189,16 @@ def prepare_media(value, kind, skip, tmp, timeout):
         duration = 0
     else:
         duration, mime = inspect_media(path, kind)
+        if declared_mime is not None:
+            aliases = {
+                "image/jpg": "image/jpeg",
+                "image/heic": "image/heif",
+                "audio/mpeg": "audio/mp3",
+            }
+            require(
+                aliases.get(declared_mime, declared_mime) == aliases.get(mime, mime),
+                "data URI MIME 与实际媒体格式不匹配",
+            )
     if remote or value.startswith("data:"):
         return value, duration
     return f"data:{mime};base64," + base64.b64encode(path.read_bytes()).decode("ascii"), duration
@@ -192,6 +206,7 @@ def prepare_media(value, kind, skip, tmp, timeout):
 
 def validate(payload, skip=False, timeout=60):
     require(isinstance(payload, dict), "请求必须是 JSON 对象")
+    payload = copy.deepcopy(payload)
     require(
         not set(payload)
         - {
@@ -296,8 +311,6 @@ def validate(payload, skip=False, timeout=60):
         all(total <= 15 for total in totals.values()),
         "参考视频或参考音频的各自总时长不得超过 15 秒",
     )
-    require(
-        len(serialize(payload)) <= 64 * MB,
-        "JSON 请求体超过 64 MB（含 Base64 膨胀），请改用公网 URL",
+    return prepare_request(
+        payload, 64 * MB, "JSON 请求体超过 64 MB（含 Base64 膨胀），请改用公网 URL"
     )
-    return payload

@@ -14,7 +14,7 @@ from unittest.mock import Mock, patch
 import requests
 from PIL import Image
 
-from media_cli import cli, common, http
+from media_cli import cli, common, config, http
 from media_cli.image import cli as commands
 from media_cli.image import client, validation
 
@@ -65,7 +65,8 @@ def response(data, status=200, headers=None):
 
 class ValidationTests(unittest.TestCase):
     def test_defaults_and_edit_context(self):
-        p, report = validation.validate(payload())
+        request, report = validation.validate(payload())
+        p = request.payload
         self.assertTrue(p["store"])
         self.assertTrue(p["background"])
         self.assertEqual(p["tools"][0]["output_format"], "png")
@@ -140,9 +141,13 @@ class ValidationTests(unittest.TestCase):
                     "file-test",
                 ]
             )
-            p, report = validation.validate(commands.build_payload(args))
+            p, report = validation.validate(
+                commands.build_payload(args, config.DEFAULT_IMAGE.with_cli(args))
+            )
             self.assertTrue(
-                p["input"][0]["content"][1]["image_url"].startswith("data:image/png;base64,")
+                p.payload["input"][0]["content"][1]["image_url"].startswith(
+                    "data:image/png;base64,"
+                )
             )
             self.assertEqual(report["unchecked"], ["input_image[1]"])
 
@@ -383,10 +388,8 @@ class CliTests(unittest.TestCase):
                 ["image", "create", "--request-json", str(request), "--prompt", "x"]
             )
             with self.assertRaises(common.CliError):
-                commands.build_payload(args)
-        with patch.dict(
-            os.environ, {"IMAGE_API_KEY": "image-secret", "VIDEO_API_KEY": "video-secret"}
-        ):
+                commands.build_payload(args, config.DEFAULT_IMAGE.with_cli(args))
+        with common.output_secrets(("image-secret", "video-secret")):
             self.assertNotIn(
                 "secret", common.redact("image-secret video-secret data:image/png;base64,YQ==")
             )

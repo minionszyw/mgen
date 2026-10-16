@@ -37,7 +37,7 @@ media-cli video run --prompt-file prompt.txt
 
 业务参数放在操作名之后；全局配置文件参数放在服务名前，例如 `media-cli --env-file config.env video run ...`。使用 `media-cli video run --help` 查看帮助。默认输出 768P、5 秒；文生视频默认 16:9，带媒体时默认 adaptive。下载默认写入 `downloads/TASK_ID.mp4`，覆盖已有文件必须传 `--overwrite`。
 
-也可传官方 JSON 请求文件：
+也可传符合本 CLI 支持范围的 JSON 请求文件：
 
 ```json
 {
@@ -57,7 +57,7 @@ media-cli video validate --request-json request.json
 media-cli video run --request-json request.json --output downloads/cat.mp4
 ```
 
-JSON 模式与生成快捷参数互斥。仅缺失的 `model` 从环境配置补充；`resolution`、`duration`、`content` 必须填写。相对素材路径基于当前工作目录。JSON 支持本地路径作为 CLI 扩展，发送前会转换为 data URI。
+JSON 模式与生成快捷参数互斥；这是受限请求结构，支持文档列出的字段及本地素材路径扩展，并非任意 API 请求透传。仅缺失的 `model` 从环境配置补充；`resolution`、`duration`、`content` 必须填写。相对素材路径基于当前工作目录。JSON 支持本地路径作为 CLI 扩展，发送前会转换为 data URI。
 
 ## 协议与校验限制
 
@@ -69,7 +69,7 @@ JSON 模式与生成快捷参数互斥。仅缺失的 `model` 从环境配置补
 - 视频支持 MP4/MOV，最大 50 MB；H.264/H.265 视频轨，内部音轨为 AAC/MP3，帧率 23.976–60。音频支持 WAV/MP3，最大 15 MB。
 - 视频和音频单段均为 2–15 秒，各类型总时长分别不超过 15 秒。JSON 请求体最多 64 MB，计入 Base64 膨胀。本工具保守使用十进制 MB（1,000,000 字节）。
 - 本地素材先检查，再编码为 data URI；公网素材会限量下载到临时目录检查，提交时保留原 URL。URL 内容在预检后发生变化仍可能被服务端拒绝。
-- data URI 验证 MIME、Base64、大小及媒体属性。`mm_file://FILE_ID` 无法读取媒体属性，默认拒绝；显式加 `--skip-media-check` 可交给服务端检查。该选项对其他素材同样跳过属性探测，仍检查结构、数量及可获得的大小；远程素材不下载。
+- 完整预检对 data URI 验证 MIME、Base64、大小及媒体属性，并核对声明 MIME 与实际媒体格式（JPG/JPEG、HEIC/HEIF、音频 MPEG/MP3 按等价别名处理）。`mm_file://FILE_ID` 无法读取媒体属性，默认拒绝；显式加 `--skip-media-check` 可交给服务端检查。该选项对其他素材同样跳过属性探测和 MIME/实际内容比对，仍检查结构、数量、data URI 的格式及 Base64、可获得的大小；远程素材不下载。
 - `extra.prompt_expansion_mode` 仅支持 H3 Max，取值 disabled / balanced / quality。`--callback-url` 仅透传已有回调服务地址，接收端需在 3 秒内原样响应 challenge；CLI 不启动回调服务器。
 
 官方页面对单独尾帧有措辞差异：场景清单支持单独尾帧，子字段说明写需配对；本工具按场景清单支持单独尾帧，最终以服务端响应为准。
@@ -78,13 +78,13 @@ JSON 模式与生成快捷参数互斥。仅缺失的 `model` 从环境配置补
 
 默认单次网络读写超时 60 秒，可用 `--timeout` 调整；这是网络操作超时，不是整个下载的总时限。默认每 10 秒轮询，最多等待 1800 秒，`--interval` 和 `--max-wait` 可调整。超时或 Ctrl+C 后服务端任务继续运行，使用创建后 stderr 显示的任务 ID 恢复查询和下载。
 
-创建 POST 不自动重试，网络错误后不能保证服务端未创建任务，需在平台确认后再重新提交。GET 查询和下载遇到网络异常、429 或 5xx 最多重试 3 次，指数退避并遵守 Retry-After。下载链接 403/404 时重新查询并刷新一次。
+创建 POST 不自动重试，网络错误后不能保证服务端未创建任务，需在平台确认后再重新提交。GET 查询和下载遇到网络异常、429 或 5xx 最多重试 3 次，指数退避并遵守 Retry-After。下载链接遇到 403/404 时可重新查询并刷新一次，与临时错误的三次重试分别计数；即使先发生网络重试，仍可刷新链接。
 
-下载使用不带 API 鉴权的独立 HTTP 会话，不向素材或 CDN 发送 API Key。数据先写同目录临时文件，检查非空及已声明长度后原子落盘；失败清理临时文件，不替换已有成品。这里检查的是传输完整性，未对输出视频执行解码验证。
+下载使用不带 API 鉴权的独立 HTTP 会话，不向素材或 CDN 发送 API Key。数据先写同目录临时文件，检查非空及已声明长度后原子落盘；临时文件在重试等待前或最终失败时清理，传输失败不替换已有成品。成功替换已有文件仍须明确传入 `--overwrite`。这里检查的是传输完整性，未对输出视频执行解码验证。
 
 任务仅可查询最近 7 天，超出窗口可能返回 invalid task_id。产物 URL 有时效，请及时下载。官方限速页目前为 H3 列出 300 RPM、30 个并行运行任务；本工具每次处理单个任务，不代替账户级限流管理，H3 Max 以平台实际额度为准。
 
-stdout 为 JSON 结果，stderr 为状态和错误；validate 不输出可能很大的 Base64 请求。退出码：0 成功，2 参数/文件/校验错误，3 网络/API/协议错误，4 任务失败或取消，5 等待超时，130 用户中断。单次 query 对 queued/running 返回 0，失败或取消返回任务 JSON 和退出码 4。
+stdout 为 JSON 结果，stderr 为状态和错误；按当前配置密钥对输出字符串脱敏并隐藏 data URI，validate 不输出 Base64 请求。退出码：0 成功，2 参数/文件/校验错误，3 网络/API/协议错误，4 任务失败或取消，5 等待超时，130 用户中断。单次 query 对 queued/running 返回 0，失败或取消返回任务 JSON 和退出码 4。
 
 ## 测试与范围
 

@@ -4,7 +4,8 @@ import argparse
 import sys
 
 from . import __version__
-from .common import CliError, load_config, log
+from .common import CliError, log, output_secrets
+from .config import load_config
 from .image import cli as image
 from .video import cli as video
 
@@ -36,14 +37,19 @@ def parser():
 def main(argv=None):
     args = parser().parse_args(argv)
     try:
-        load_config(args.env_file)
-        return args.handler(args)
-    except CliError as exc:
-        log(exc)
-        return exc.code
+        config = load_config(args.env_file)
     except (OSError, ValueError) as exc:
-        log(f"文件或数据错误：{exc}")
+        log(f"配置读取失败：{exc}")
         return 2
-    except KeyboardInterrupt:
-        log("已中断；服务端任务未取消，请使用已显示的 ID 继续查询")
-        return 130
+    with output_secrets(config.secrets):
+        try:
+            return args.handler(args, getattr(config, args.service).with_cli(args))
+        except CliError as exc:
+            log(exc)
+            return exc.code
+        except (OSError, ValueError) as exc:
+            log(f"文件或数据错误：{exc}")
+            return 2
+        except KeyboardInterrupt:
+            log("已中断；服务端任务未取消，请使用已显示的 ID 继续查询")
+            return 130
