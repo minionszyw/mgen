@@ -64,6 +64,30 @@ def response(data, status=200, headers=None):
 
 
 class ValidationTests(unittest.TestCase):
+    def test_sync_fields_and_immutable_encoded_request(self):
+        source = payload()
+        original = copy.deepcopy(source)
+        request, _ = validation.validate(source, sync=True)
+        self.assertEqual(source, original)
+        self.assertNotIn("background", request.payload)
+        self.assertNotIn("store", request.payload)
+        self.assertEqual(request.payload["tools"][0]["background"], "auto")
+        self.assertEqual(json.loads(request.body), request.payload)
+        for store in (True, False):
+            request, _ = validation.validate(payload(background=False, store=store), sync=True)
+            self.assertIs(request.payload["background"], False)
+            self.assertIs(request.payload["store"], store)
+        for fields in (
+            {"background": True},
+            {"background": 0},
+            {"background": None},
+            {"store": 1},
+            {"store": "false"},
+            {"store": None},
+        ):
+            with self.subTest(fields=fields), self.assertRaises(common.CliError):
+                validation.validate(payload(**fields), sync=True)
+
     def test_defaults_and_edit_context(self):
         request, report = validation.validate(payload())
         p = request.payload
@@ -360,6 +384,96 @@ class SaveTests(unittest.TestCase):
 
 
 class CliTests(unittest.TestCase):
+    def test_background_create_returns_summary_without_polling(self):
+        for status, expected in (("queued", 0), ("completed", 0), ("failed", 4)):
+            with (
+                self.subTest(status=status),
+                patch.dict(os.environ, {"IMAGE_API_KEY": "test-key"}, clear=True),
+                patch.object(
+                    requests.Session, "request", return_value=response(result(status))
+                ) as send,
+                contextlib.redirect_stdout(io.StringIO()) as out,
+                contextlib.redirect_stderr(io.StringIO()),
+            ):
+                self.assertEqual(cli.main(["image", "create", "--prompt", "cat"]), expected)
+                self.assertEqual(send.call_count, 1)
+                self.assertEqual(json.loads(out.getvalue())["status"], status)
+                self.assertNotIn('"result"', out.getvalue())
+
+    def test_sync_validate_json_without_key(self):
+        with tempfile.TemporaryDirectory() as directory:
+            request = Path(directory) / "request.json"
+            for fields, expected in (
+                ({}, 0),
+                ({"background": False, "store": False}, 0),
+                ({"background": True}, 2),
+            ):
+                request.write_text(json.dumps(payload(**fields)))
+                with (
+                    self.subTest(fields=fields),
+                    patch.dict(os.environ, {}, clear=True),
+                    contextlib.redirect_stdout(io.StringIO()) as out,
+                    contextlib.redirect_stderr(io.StringIO()),
+                ):
+                    self.assertEqual(
+                        cli.main(
+                            [
+                                "--env-file",
+                                directory + "/missing.env",
+                                "image",
+                                "validate",
+                                "--sync",
+                                "--request-json",
+                                str(request),
+                            ]
+                        ),
+                        expected,
+                    )
+                    if expected == 0:
+                        self.assertTrue(json.loads(out.getvalue())["valid"])
+
+    def test_sync_error_responses_do_not_poll_or_retry(self):
+        cases = [
+            (result("queued", output=[]), 200, 4),
+            (result("in_progress", output=[]), 200, 4),
+            (result("failed", error={"message": "test-key"}), 200, 4),
+            (result("cancelled"), 200, 4),
+            (result("incomplete"), 200, 4),
+            (result(output=[]), 200, 4),
+            (result(output=None), 200, 3),
+            ({"error": {"message": "Unsupported parameter: background"}}, 400, 3),
+        ]
+        for operation in ("run", "create"):
+            for data, status, expected in cases:
+                reply = response(data, status)
+                with (
+                    self.subTest(operation=operation, data=data),
+                    patch.dict(os.environ, {"IMAGE_API_KEY": "test-key"}, clear=True),
+                    patch.object(requests.Session, "request", return_value=reply) as send,
+                    contextlib.redirect_stdout(io.StringIO()) as out,
+                    contextlib.redirect_stderr(io.StringIO()) as err,
+                ):
+                    self.assertEqual(
+                        cli.main(
+                            [
+                                "image",
+                                operation,
+                                "--sync",
+                                "--prompt",
+                                "cat",
+                            ]
+                        ),
+                        expected,
+                    )
+                    self.assertEqual(send.call_count, 1)
+                    self.assertEqual(send.call_args.args[0], "POST")
+                    reply.close.assert_called_once()
+                    self.assertNotIn("test-key", out.getvalue() + err.getvalue())
+                    if data.get("status") in {"queued", "in_progress"}:
+                        self.assertEqual(json.loads(out.getvalue())["id"], "resp_123")
+                        self.assertIn("resp_123", err.getvalue())
+                    self.assertNotIn('"result"', out.getvalue())
+
     def test_validation_config_and_conflict(self):
         with tempfile.TemporaryDirectory() as directory:
             env = Path(directory) / "config.env"
@@ -405,6 +519,104 @@ class CliTests(unittest.TestCase):
 
 
 class IntegrationTests(unittest.TestCase):
+    def test_sync_generate_edit_and_create_without_get(self):
+        observed = []
+        response_data = result()
+        response_data["output"][0]["revised_prompt"] = "test-key data:image/png;base64,YQ=="
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def do_POST(self):
+                observed.append(
+                    (
+                        self.path,
+                        self.headers.get("Authorization"),
+                        json.loads(self.rfile.read(int(self.headers["Content-Length"]))),
+                    )
+                )
+                body = json.dumps(response_data).encode()
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def do_GET(self):
+                observed.append(("unexpected GET",))
+                self.send_error(500)
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with (
+                tempfile.TemporaryDirectory() as directory,
+                patch.dict(os.environ, {"IMAGE_API_KEY": "test-key"}, clear=True),
+            ):
+                reference = Path(directory) / "input.png"
+                reference.write_bytes(png())
+                for operation, action in (
+                    ("run", "generate"),
+                    ("run", "edit"),
+                    ("create", "generate"),
+                ):
+                    args = [
+                        "image",
+                        operation,
+                        "--sync",
+                        "--base-url",
+                        f"http://127.0.0.1:{server.server_port}/v1",
+                        "--prompt",
+                        "cat",
+                        "--action",
+                        action,
+                        "--background",
+                        "transparent",
+                        "--timeout",
+                        "300",
+                    ]
+                    destination = Path(directory) / action
+                    if operation == "run":
+                        args += ["--output-dir", str(destination)]
+                    if action == "edit":
+                        args += ["--image", str(reference)]
+                    with (
+                        self.subTest(operation=operation, action=action),
+                        contextlib.redirect_stdout(io.StringIO()) as out,
+                        contextlib.redirect_stderr(io.StringIO()) as err,
+                    ):
+                        self.assertEqual(cli.main(args), 0)
+                        output = json.loads(out.getvalue())
+                        self.assertNotIn("test-key", out.getvalue() + err.getvalue())
+                        self.assertNotIn("data:image", out.getvalue() + err.getvalue())
+                        self.assertNotIn('"result"', out.getvalue())
+                        if operation == "run":
+                            self.assertEqual(Path(output["images"][0]["path"]).read_bytes(), png())
+                            manifest = json.loads(Path(output["manifest"]).read_text())
+                            self.assertEqual(
+                                manifest["output"][0]["revised_prompt"],
+                                response_data["output"][0]["revised_prompt"],
+                            )
+                        else:
+                            self.assertEqual(output["status"], "completed")
+                    path, auth, sent = observed[-1]
+                    self.assertEqual(path, "/v1/responses")
+                    self.assertEqual(auth, "Bearer test-key")
+                    self.assertNotIn("background", sent)
+                    self.assertNotIn("store", sent)
+                    self.assertEqual(sent["tools"][0]["background"], "transparent")
+                    self.assertEqual(sent["tools"][0]["action"], action)
+                    if action == "edit":
+                        self.assertEqual(
+                            sent["input"][0]["content"][1]["image_url"], data_uri(png())
+                        )
+                self.assertEqual(len(observed), 3)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+
     def test_background_edit_run_and_restore(self):
         observed = []
         requests_seen = []

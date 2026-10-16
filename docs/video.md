@@ -88,6 +88,6 @@ stdout 为 JSON 结果，stderr 为状态和错误；按当前配置密钥对输
 
 ## 测试与范围
 
-测试使用模拟 HTTP 与探测数据，不调用收费生成接口。范围限定为视频 V2 的生成、校验、查询和下载，不包括旧版 API、批量任务、取消/删除及回调服务器。
+测试使用模拟 HTTP 与探测数据，不调用收费生成接口。范围限定为视频 V2 的生成、校验、查询和下载，不包括批量任务、取消/删除及回调服务器。
 
 参考：[创建接口](https://platform.minimax.cn/docs/api-reference/video-generation-v2-create)、[查询接口](https://platform.minimax.cn/docs/api-reference/video-generation-v2-query)、[速率限制](https://platform.minimax.cn/docs/guides/rate-limits)。

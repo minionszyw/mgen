@@ -1,7 +1,7 @@
 """OpenAI Responses 图片命令。"""
 
 from ..arguments import add_network_arguments, add_prompt_arguments, add_wait_arguments, read_prompt
-from ..common import emit, read_json, require
+from ..common import CliError, emit, read_json, require
 from .client import ImageClient, check_terminal, decode_outputs, save_images, summary
 from .validation import validate
 
@@ -75,7 +75,7 @@ def add_commands(parser):
     commands = parser.add_subparsers(dest="command", required=True, title="操作")
     descriptions = {
         "validate": "仅构建和预检请求",
-        "create": "后台创建图片响应",
+        "create": "创建图片响应，默认后台执行",
         "query": "查询响应状态",
         "download": "获取并保存全部图片",
         "run": "创建、等待并保存图片",
@@ -85,6 +85,11 @@ def add_commands(parser):
         add_network_arguments(cmd, "Responses API 基础地址，包含 /v1")
         if name in {"validate", "create", "run"}:
             add_prompt_arguments(cmd)
+            cmd.add_argument(
+                "--sync",
+                action="store_true",
+                help="同步执行，不轮询；第三方不支持后台模式时建议开启，可用 --timeout 300 延长等待",
+            )
             cmd.add_argument("--tool-model", help="图片生成工具模型")
             cmd.add_argument(
                 "--image", action="append", help="本地路径、HTTP(S) URL 或 data URI，可重复"
@@ -113,9 +118,8 @@ def add_commands(parser):
 
 
 def execute(args, config):
-    payload = None
     if args.command in {"validate", "create", "run"}:
-        payload, report = validate(build_payload(args, config), args.timeout)
+        payload, report = validate(build_payload(args, config), args.timeout, sync=args.sync)
         if args.command == "validate":
             emit(
                 {
@@ -136,15 +140,15 @@ def execute(args, config):
         if args.command in {"create", "run"}:
             initial = client.create(payload)
             response_id = initial["id"]
-            if args.command == "create":
+            if args.sync and initial["status"] != "completed":
                 emit(summary(initial))
                 check_terminal(initial)
-                if initial["status"] == "completed":
-                    decode_outputs(initial)
-                return 0
+                raise CliError(f"同步响应 {response_id} 尚未完成；未自动查询或重新创建", 4)
         else:
             response_id = args.response_id
-        if args.command == "run" or args.wait:
+        if args.command == "create" or (args.command == "run" and args.sync):
+            data = initial
+        elif args.command == "run" or args.wait:
             data = client.wait(response_id, args.interval, args.max_wait, initial)
         else:
             data = client.query(response_id)

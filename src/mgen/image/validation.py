@@ -150,7 +150,7 @@ def validate_tool(tool):
     )
 
 
-def validate(payload, timeout=60):
+def validate(payload, timeout=60, *, sync=False):
     require(isinstance(payload, dict), "请求必须是 JSON 对象")
     payload = copy.deepcopy(payload)
     require(
@@ -165,8 +165,16 @@ def validate(payload, timeout=60):
         and not model.startswith(("gpt-image-", "chatgpt-image-")),
         "model 必须是支持图片工具的对话模型，图片模型请放入 tools",
     )
-    for key in ("background", "store"):
-        require(payload.setdefault(key, True) is True, f"本 CLI 的后台和多轮工作流要求 {key}=true")
+    if sync:
+        if "background" in payload:
+            require(payload["background"] is False, "--sync 要求顶层 background=false 或省略")
+        if "store" in payload:
+            require(type(payload["store"]) is bool, "store 必须是布尔值")
+    else:
+        for key in ("background", "store"):
+            require(
+                payload.setdefault(key, True) is True, f"本 CLI 的后台和多轮工作流要求 {key}=true"
+            )
     require(
         payload.setdefault("tool_choice", {"type": "image_generation"})
         == {"type": "image_generation"},

@@ -1,6 +1,6 @@
 # mgen
 
-统一管理 MiniMax 视频 V2 和 OpenAI Responses 图片生成的 Python CLI。支持输入预检、后台创建、查询等待、结果恢复与保存。
+统一管理 MiniMax 视频 V2 和 OpenAI Responses 图片生成的 Python CLI。支持输入预检、图片同步或后台创建、查询等待、结果恢复与保存。
 
 ## 安装
 
@@ -26,6 +26,9 @@ mgen image validate --prompt '一幅水彩风景'
 mgen video run --prompt '海边日落' --output downloads/sunset.mp4
 mgen image run --prompt '一幅水彩风景' --output-dir downloads/landscape
 
+# 第三方图片服务不支持后台模式时，建议显式开启同步模式
+mgen image run --sync --timeout 300 --prompt '一幅水彩风景'
+
 # 指定配置文件；全局参数放在服务名前
 mgen --env-file ./config.env image run --prompt '一幅水彩风景'
 
@@ -35,7 +38,7 @@ mgen image run --help
 mgen --version
 ```
 
-也可使用 `python -m mgen`。旧根目录脚本已移除。两个服务均提供 `validate`、`create`、`query`、`download` 和 `run`，通过任务/响应 ID 恢复后续操作。
+也可使用 `python -m mgen`。两个服务均提供 `validate`、`create`、`query`、`download` 和 `run`，通过任务/响应 ID 恢复后续操作。
 
 详细用法与协议限制：[视频 CLI](docs/video.md)、[图片 CLI](docs/image.md)。
 

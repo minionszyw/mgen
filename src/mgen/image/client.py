@@ -1,4 +1,4 @@
-"""Responses 后台生命周期及图片结果保存。"""
+"""Responses 生命周期及图片结果保存。"""
 
 import base64
 import binascii
@@ -100,7 +100,7 @@ class ImageClient(JsonClient):
 
     def create(self, payload):
         data = check_response(self.request("POST", "/responses", payload))
-        log(f"响应已创建：{data['id']}；可用 image query 或 image download 恢复")
+        log(f"响应已创建：{data['id']}")
         return data
 
     def query(self, response_id, deadline=None):

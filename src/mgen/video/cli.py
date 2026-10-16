@@ -119,7 +119,6 @@ def add_commands(p):
 
 
 def execute(args, config):
-    payload = None
     if args.command in {"validate", "create", "run"}:
         payload = validate(build_payload(args, config), args.skip_media_check, args.timeout)
     if args.command == "validate":
