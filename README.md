@@ -1,4 +1,4 @@
-# Media CLI
+# mgen
 
 统一管理 MiniMax 视频 V2 和 OpenAI Responses 图片生成的 Python CLI。支持输入预检、后台创建、查询等待、结果恢复与保存。
 
@@ -19,23 +19,23 @@ cp .env.example .env
 
 ```sh
 # 请求预检：无需密钥，远程素材会下载检查
-media-cli video validate --prompt '海边日落'
-media-cli image validate --prompt '一幅水彩风景'
+mgen video validate --prompt '海边日落'
+mgen image validate --prompt '一幅水彩风景'
 
 # 创建、等待、保存
-media-cli video run --prompt '海边日落' --output downloads/sunset.mp4
-media-cli image run --prompt '一幅水彩风景' --output-dir downloads/landscape
+mgen video run --prompt '海边日落' --output downloads/sunset.mp4
+mgen image run --prompt '一幅水彩风景' --output-dir downloads/landscape
 
 # 指定配置文件；全局参数放在服务名前
-media-cli --env-file ./config.env image run --prompt '一幅水彩风景'
+mgen --env-file ./config.env image run --prompt '一幅水彩风景'
 
 # 查看帮助和版本
-media-cli --help
-media-cli image run --help
-media-cli --version
+mgen --help
+mgen image run --help
+mgen --version
 ```
 
-也可使用 `python -m media_cli`。旧根目录脚本已移除。两个服务均提供 `validate`、`create`、`query`、`download` 和 `run`，通过任务/响应 ID 恢复后续操作。
+也可使用 `python -m mgen`。旧根目录脚本已移除。两个服务均提供 `validate`、`create`、`query`、`download` 和 `run`，通过任务/响应 ID 恢复后续操作。
 
 详细用法与协议限制：[视频 CLI](docs/video.md)、[图片 CLI](docs/image.md)。
 
@@ -69,14 +69,14 @@ python -m build
 构建产物位于 `dist/`，wheel 安装示例：
 
 ```sh
-python -m pip install dist/media_cli-0.1.0-py3-none-any.whl
-media-cli --version
+python -m pip install dist/mgen-0.1.0-py3-none-any.whl
+mgen --version
 ```
 
 源码使用 `src` 布局：
 
 ```text
-src/media_cli/
+src/mgen/
   cli.py              # 顶层参数与命令分发
   config.py           # 集中默认值、不可变配置与环境优先级
   arguments.py        # 共用参数声明、提示词读取

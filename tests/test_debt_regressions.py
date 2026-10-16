@@ -15,11 +15,11 @@ from unittest.mock import Mock, patch
 import requests
 from PIL import Image
 
-from media_cli import cli, common, config, http
-from media_cli.image import client as image_client
-from media_cli.image import validation as image_validation
-from media_cli.video import client as video_client
-from media_cli.video import validation as video_validation
+from mgen import cli, common, config, http
+from mgen.image import client as image_client
+from mgen.image import validation as image_validation
+from mgen.video import client as video_client
+from mgen.video import validation as video_validation
 
 
 def video_payload():
@@ -352,14 +352,14 @@ class DownloadTests(unittest.TestCase):
             out.write_bytes(b"original")
 
             def check(delay):
-                self.assertEqual(list(Path(directory).glob(".media-cli-*")), [])
+                self.assertEqual(list(Path(directory).glob(".mgen-*")), [])
                 self.assertEqual(out.read_bytes(), b"original")
 
             sleep.side_effect = check
             with self.assertRaises(common.CliError):
                 video_client.download(Mock(timeout=1), "123", task(), str(out), True)
             self.assertEqual(out.read_bytes(), b"original")
-            self.assertEqual(list(Path(directory).glob(".media-cli-*")), [])
+            self.assertEqual(list(Path(directory).glob(".mgen-*")), [])
 
     def test_bad_content_length_is_protocol_error(self):
         with (

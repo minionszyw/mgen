@@ -42,7 +42,7 @@ def atomic_write(destination, data, overwrite=False):
     temp = None
     try:
         with tempfile.NamedTemporaryFile(
-            dir=destination.parent, prefix=".media-cli-", delete=False
+            dir=destination.parent, prefix=".mgen-", delete=False
         ) as out:
             temp = Path(out.name)
             out.write(data)
@@ -54,5 +54,5 @@ def atomic_write(destination, data, overwrite=False):
 
 def temporary_path(directory):
     """保留唯一临时路径；生命周期由调用方的临时目录管理。"""
-    with tempfile.NamedTemporaryFile(dir=directory, prefix=".media-cli-", delete=False) as out:
+    with tempfile.NamedTemporaryFile(dir=directory, prefix=".mgen-", delete=False) as out:
         return Path(out.name)

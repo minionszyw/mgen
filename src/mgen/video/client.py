@@ -98,7 +98,7 @@ def download(client, task_id, data, output, overwrite):
                         response.raise_for_status()
                         size = 0
                         with tempfile.NamedTemporaryFile(
-                            dir=destination.parent, prefix=".media-cli-", delete=False
+                            dir=destination.parent, prefix=".mgen-", delete=False
                         ) as out:
                             temp = Path(out.name)
                             for chunk in response.iter_content(256 * 1024):

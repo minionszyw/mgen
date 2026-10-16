@@ -233,7 +233,7 @@ def validate(payload, timeout=60):
     unchecked = []
     total = 0
     infos = []
-    with tempfile.TemporaryDirectory(prefix="media-cli-image-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="mgen-image-") as tmp:
         for index, item in enumerate(images):
             _, info = prepare_image(item, tmp, timeout, MAX_PAYLOAD - total)
             infos.append(info)

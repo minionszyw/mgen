@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "media-cli"
+name = "mgen"
 dynamic = ["version"]
 description = "MiniMax 视频与 OpenAI Responses 图片生成命令行工具"
 readme = "README.md"
@@ -19,17 +19,17 @@ dependencies = [
 dev = ["build>=1.2,<2", "ruff>=0.9,<1"]
 
 [project.scripts]
-media-cli = "media_cli.cli:main"
+mgen = "mgen.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["media_cli*"]
+include = ["mgen*"]
 
 [tool.setuptools]
 include-package-data = false
 
 [tool.setuptools.dynamic]
-version = {attr = "media_cli.__version__"}
+version = {attr = "mgen.__version__"}
 
 [tool.ruff]
 target-version = "py310"

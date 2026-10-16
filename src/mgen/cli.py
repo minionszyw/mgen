@@ -23,7 +23,7 @@ class Parser(argparse.ArgumentParser):
 
 
 def parser():
-    root = Parser(prog="media-cli", description="MiniMax 视频与 OpenAI Responses 图片生成工具")
+    root = Parser(prog="mgen", description="MiniMax 视频与 OpenAI Responses 图片生成工具")
     root.add_argument(
         "--version", action="version", version=f"%(prog)s {__version__}", help="显示版本并退出"
     )

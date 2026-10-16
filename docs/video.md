@@ -6,36 +6,36 @@
 
 ```sh
 # 只校验，不创建任务，不需要密钥；会读取/下载输入媒体
-media-cli video validate --prompt '海边的日落，镜头缓缓推进'
+mgen video validate --prompt '海边的日落，镜头缓缓推进'
 
 # 一次完成创建、等待与下载
-media-cli video run --prompt '海边的日落，镜头缓缓推进' --output downloads/sunset.mp4
+mgen video run --prompt '海边的日落，镜头缓缓推进' --output downloads/sunset.mp4
 
 # 分步执行；将输出中的 task_id 代入后续命令
-media-cli video create --prompt '雨中城市' --resolution 2K --duration 8 --ratio 16:9
-media-cli video query TASK_ID
-media-cli video query TASK_ID --wait --interval 10 --max-wait 1800
-media-cli video download TASK_ID --wait --output downloads/result.mp4
+mgen video create --prompt '雨中城市' --resolution 2K --duration 8 --ratio 16:9
+mgen video query TASK_ID
+mgen video query TASK_ID --wait --interval 10 --max-wait 1800
+mgen video download TASK_ID --wait --output downloads/result.mp4
 
 # 首帧、尾帧、首尾帧：本地路径与公网 URL 可混用
-media-cli video run --prompt '让画面动起来' --first-frame ./start.png
-media-cli video run --prompt '镜头最终停留在此画面' --last-frame ./end.png
-media-cli video run --prompt '从白天过渡到夜晚' --first-frame ./start.png --last-frame ./end.png
+mgen video run --prompt '让画面动起来' --first-frame ./start.png
+mgen video run --prompt '镜头最终停留在此画面' --last-frame ./end.png
+mgen video run --prompt '从白天过渡到夜晚' --first-frame ./start.png --last-frame ./end.png
 
 # 多模态参考；每种 reference 参数可重复
-media-cli video run --prompt '人物按参考视频运动，声音参考音频' \
+mgen video run --prompt '人物按参考视频运动，声音参考音频' \
   --reference-image ./person.png --reference-video https://example.com/motion.mp4 \
   --reference-audio ./voice.wav
 
 # H3 Max 的提示词扩写与水印
-media-cli video run --model MiniMax-H3-Max --prompt '海边日落' \
+mgen video run --model MiniMax-H3-Max --prompt '海边日落' \
   --resolution 480P --prompt-expansion-mode quality --aigc-watermark
 
 # 从 UTF-8 文件读取提示词
-media-cli video run --prompt-file prompt.txt
+mgen video run --prompt-file prompt.txt
 ```
 
-业务参数放在操作名之后；全局配置文件参数放在服务名前，例如 `media-cli --env-file config.env video run ...`。使用 `media-cli video run --help` 查看帮助。默认输出 768P、5 秒；文生视频默认 16:9，带媒体时默认 adaptive。下载默认写入 `downloads/TASK_ID.mp4`，覆盖已有文件必须传 `--overwrite`。
+业务参数放在操作名之后；全局配置文件参数放在服务名前，例如 `mgen --env-file config.env video run ...`。使用 `mgen video run --help` 查看帮助。默认输出 768P、5 秒；文生视频默认 16:9，带媒体时默认 adaptive。下载默认写入 `downloads/TASK_ID.mp4`，覆盖已有文件必须传 `--overwrite`。
 
 也可传符合本 CLI 支持范围的 JSON 请求文件：
 
@@ -53,8 +53,8 @@ media-cli video run --prompt-file prompt.txt
 ```
 
 ```sh
-media-cli video validate --request-json request.json
-media-cli video run --request-json request.json --output downloads/cat.mp4
+mgen video validate --request-json request.json
+mgen video run --request-json request.json --output downloads/cat.mp4
 ```
 
 JSON 模式与生成快捷参数互斥；这是受限请求结构，支持文档列出的字段及本地素材路径扩展，并非任意 API 请求透传。仅缺失的 `model` 从环境配置补充；`resolution`、`duration`、`content` 必须填写。相对素材路径基于当前工作目录。JSON 支持本地路径作为 CLI 扩展，发送前会转换为 data URI。

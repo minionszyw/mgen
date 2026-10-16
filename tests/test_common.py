@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock
 
-from media_cli import cli, common, files, http
+from mgen import cli, common, files, http
 
 
 class CommonTests(unittest.TestCase):
@@ -23,7 +23,7 @@ class CommonTests(unittest.TestCase):
             self.assertEqual(cm.exception.code, 0)
         with tempfile.TemporaryDirectory() as directory:
             completed = subprocess.run(
-                [sys.executable, "-m", "media_cli", "image", "validate", "--prompt", "猫"],
+                [sys.executable, "-m", "mgen", "image", "validate", "--prompt", "猫"],
                 cwd=directory,
                 capture_output=True,
                 text=True,
@@ -38,7 +38,7 @@ class CommonTests(unittest.TestCase):
             with self.assertRaises(FileExistsError):
                 files.atomic_write(path, b"replacement")
             self.assertEqual(path.read_bytes(), b"original")
-            self.assertEqual(list(Path(directory).glob(".media-cli-*")), [])
+            self.assertEqual(list(Path(directory).glob(".mgen-*")), [])
             files.atomic_write(path, b"replacement", True)
             self.assertEqual(path.read_bytes(), b"replacement")
 

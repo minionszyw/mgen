@@ -14,9 +14,9 @@ from unittest.mock import Mock, patch
 import requests
 from PIL import Image
 
-from media_cli import cli, common, config, http
-from media_cli.image import cli as commands
-from media_cli.image import client, validation
+from mgen import cli, common, config, http
+from mgen.image import cli as commands
+from mgen.image import client, validation
 
 
 def payload(**kwargs):
@@ -356,7 +356,7 @@ class SaveTests(unittest.TestCase):
             self.assertIn("ig_123.png", str(cm.exception))
             self.assertTrue((Path(directory) / "ig_123.png").exists())
             self.assertFalse((Path(directory) / "result.json").exists())
-            self.assertEqual(list(Path(directory).glob(".media-cli-*")), [])
+            self.assertEqual(list(Path(directory).glob(".mgen-*")), [])
 
 
 class CliTests(unittest.TestCase):

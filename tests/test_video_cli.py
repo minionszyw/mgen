@@ -13,10 +13,10 @@ from unittest.mock import Mock, patch
 import requests
 from PIL import Image
 
-from media_cli import cli, common, config, files
-from media_cli.video import cli as vcli
-from media_cli.video import client as vc
-from media_cli.video import validation as vv
+from mgen import cli, common, config, files
+from mgen.video import cli as vcli
+from mgen.video import client as vc
+from mgen.video import validation as vv
 
 
 def payload(**kw):
@@ -323,7 +323,7 @@ class DownloadTests(unittest.TestCase):
             with self.assertRaises(vc.CliError):
                 vc.download(client, "123", task(), str(out), False)
             self.assertFalse(out.exists())
-            self.assertEqual(list(Path(directory).glob(".media-cli-*")), [])
+            self.assertEqual(list(Path(directory).glob(".mgen-*")), [])
 
     def test_remote_size(self):
         with (

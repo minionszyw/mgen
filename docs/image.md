@@ -19,39 +19,39 @@ IMAGE_API_KEY=
 
 ```sh
 # 不需要 API Key；包含 URL 时会下载预检
-media-cli image validate --prompt '一幅水彩风景'
+mgen image validate --prompt '一幅水彩风景'
 
 # 一次完成后台创建、等待和结果保存
-media-cli image run --prompt '一幅水彩风景' --output-dir downloads/landscape
+mgen image run --prompt '一幅水彩风景' --output-dir downloads/landscape
 
 # 自定义输出参数
-media-cli image run --prompt '一幅横向电影海报' --size 1536x1024 --quality high
-media-cli image run --prompt '透明背景的红色玩具车' --background transparent --output-format webp
-media-cli image run --prompt '手绘卡片' --output-format jpeg --output-compression 80
+mgen image run --prompt '一幅横向电影海报' --size 1536x1024 --quality high
+mgen image run --prompt '透明背景的红色玩具车' --background transparent --output-format webp
+mgen image run --prompt '手绘卡片' --output-format jpeg --output-compression 80
 
 # 参考图生成/编辑；--image 可重复，支持本地路径、URL、data URI
-media-cli image run --prompt '将这只猫改为水彩风格' --image ./cat.png --action edit
-media-cli image run --prompt '将两个角色放在同一场景' --image ./cat.png --image ./dog.png
-media-cli image run --prompt '根据参考图生成海报' --image https://example.com/reference.png
+mgen image run --prompt '将这只猫改为水彩风格' --image ./cat.png --action edit
+mgen image run --prompt '将两个角色放在同一场景' --image ./cat.png --image ./dog.png
+mgen image run --prompt '根据参考图生成海报' --image https://example.com/reference.png
 
 # 蒙版编辑：透明区域指示需要修改的部分，第一张图片为编辑目标
-media-cli image run --prompt '将背景换成花园' --image ./scene.png --mask ./mask.png --action edit
+mgen image run --prompt '将背景换成花园' --image ./scene.png --mask ./mask.png --action edit
 
 # 使用已有 Files API 文件 ID，不自动上传文件
-media-cli image run --prompt '修改图中背景' --image-file-id file-INPUT --mask-file-id file-MASK --action edit
+mgen image run --prompt '修改图中背景' --image-file-id file-INPUT --mask-file-id file-MASK --action edit
 
 # 多轮修改：将上次结果中的 response_id 代入
-media-cli image run --prompt '将背景改为夜晚' --previous-response-id resp_PREVIOUS --action edit
+mgen image run --prompt '将背景改为夜晚' --previous-response-id resp_PREVIOUS --action edit
 
 # 分步创建与恢复
-media-cli image create --prompt '一幅水彩风景'
-media-cli image query resp_RESPONSE
-media-cli image query resp_RESPONSE --wait --interval 5 --max-wait 1800
-media-cli image download resp_RESPONSE --wait --output-dir downloads/restored
+mgen image create --prompt '一幅水彩风景'
+mgen image query resp_RESPONSE
+mgen image query resp_RESPONSE --wait --interval 5 --max-wait 1800
+mgen image download resp_RESPONSE --wait --output-dir downloads/restored
 
 # 提示词文件、工具模型和配置文件
-media-cli image run --prompt-file prompt.txt --tool-model gpt-image-2.5-flare
-media-cli --env-file image.env image run --prompt '一幅水彩风景'
+mgen image run --prompt-file prompt.txt --tool-model gpt-image-2.5-flare
+mgen --env-file image.env image run --prompt '一幅水彩风景'
 ```
 
 参数放在操作名之后；只有 `--env-file` 和 `--version` 为根命令参数。`--image-file-id` 输入排列在所有 `--image` 输入之后；混用时蒙版目标仍是最终数组中的第一张图片。需要精确控制顺序可使用 JSON 请求。
@@ -81,8 +81,8 @@ media-cli --env-file image.env image run --prompt '一幅水彩风景'
 ```
 
 ```sh
-media-cli image validate --request-json request.json
-media-cli image run --request-json request.json --output-dir downloads/edited
+mgen image validate --request-json request.json
+mgen image run --request-json request.json --output-dir downloads/edited
 ```
 
 JSON 模式与生成快捷参数互斥，允许同时使用超时、基础 URL、等待和输出选项。缺失的顶层 model 与工具 model 由配置补充。`input` 支持字符串或一条 user 消息，消息包含恰好一个非空 input_text 和可选 input_image；图片引用恰好使用 image_url 或 file_id。本地路径基于运行目录，发送前编码为 data URI。
