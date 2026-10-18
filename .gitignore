@@ -10,4 +10,5 @@ build/
 dist/
 *.egg-info/
 .ruff_cache/
-assets/
+output/
+input/
