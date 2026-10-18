@@ -6,6 +6,7 @@ PYTHONPATH=src .venv/bin/python -m mgen image run \
   --image input/2.jpg \
   --image input/3.jpg \
   --prompt-file assets/character/template/prompt.txt \
+  --size 2560x1440 \
   --quality high \
   --output-format png \
   --output-dir output/character-design
